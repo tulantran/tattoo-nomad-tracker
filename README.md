@@ -1,11 +1,15 @@
-# 🌍 Tattoo Nomad Tracker
+# Traveling Tattooer Tracker
+AI agent designed to track which city a tattoo artist is. It scrapes Instagram profiles, extracts messy location data from bios, captions, and hidden links, and outputs a clean, standardized JSON object of where artists are currently tattooing and where they are guesting.
 
-An intelligent AI agent designed to track the nomadic schedules of tattoo artists. It scrapes Instagram profiles, extracts messy location data from bios, captions, and hidden links, and outputs a clean, standardized JSON object of where artists are currently tattooing and where they are guesting.
+## The Problem
+As someone that collects my favorite artist in my following waiting for the day I travel to thier city only to arrive there and hopelessly search on the deepsea that is instagram and the hundreds of people I follow hoping I remember just exactly who it was that I was looking for, I desperately need this tool. I will not sit on another flight home to then realize I had just unknowingly visited the city of a tattooer I had admired for years. 
 
-## 🧠 The Problem
-Tattoo artists travel constantly for guest spots. Their Instagram bios are often out of date, they use different city aliases (e.g., "Saigon" vs. "Ho Chi Minh City"), and they frequently hide their studio's Google Maps link in the "Link in Bio" button rather than the text. Manually tracking this is a nightmare.
 
-## ⚡ The Solution
+
+The modern tattoo industry has evolved into a highly nomadic culture, where traveling for guest spots and pop-ups is the standard. However, the tools to track these artists haven't caught up. Artists scatter their changing locations across Instagram in a chaotic mix of formats, whether buried in an outdated text bio, hidden as a raw Google Maps link, casually dropped in a post caption, or the even bio of a different user linked somewhere. Because their schedules are a constantly moving target, manually piecing together where artists are tattooing on any given week is a near-impossible nightmare. This tool is built specifically to adapt to this new industry reality, automatically hunting down and standardizing that fragmented data.
+
+
+##  The Solution
 This Python script acts as an automated research assistant using **Prompt Chaining** and smart web logic:
 1. **The Eyes:** Scrapes bios and the last 10 post captions via Apify.
 2. **The Link Expander:** Detects short URLs (like g.co/maps/...), follows the redirects, and grabs the full Google Maps URL containing the actual city name.
@@ -13,13 +17,13 @@ This Python script acts as an automated research assistant using **Prompt Chaini
 4. **The Deep Dive:** Automatically scrapes the tagged studio's bio/links to deduce the artist's location.
 5. **Agent 2 (Standardizer):** Takes the raw, messy AI output and standardizes all geography into a uniform City, Country format.
 
-## 🛠 Tech Stack
+## Tech Stack
 * **Language:** Python 3
 * **AI Engine:** OpenAI API (gpt-4o-mini for fast, cost-effective parsing)
 * **Scraping:** Apify Client (Instagram Profile Scraper)
 * **Web Logic:** requests library for HTTP redirect following
 
-## 📋 Example Output
+##  Example Output
 {
     "artists": [
         {
@@ -37,7 +41,7 @@ This Python script acts as an automated research assistant using **Prompt Chaini
     ]
 }
 
-## 🚀 Setup & Installation
+##  Setup & Installation
 
 1. **Clone the repo:**
    git clone https://github.com/YOUR_USERNAME/tattoo-nomad-tracker.git
@@ -57,7 +61,7 @@ This Python script acts as an automated research assistant using **Prompt Chaini
    Edit the artists_to_track list at the bottom of app.py with the usernames you want to find, then run:
    python3 app.py
 
-## 🗺 Future Roadmap
+## Future Roadmap
 - [ ] **Streamlit Web UI:** Move out of the terminal and into a visual web interface.
 - [ ] **Interactive Map:** Mapbox integration to plot artists on a global map with confidence pins.
 - [ ] **Date Slider:** Filter the map by specific dates to see who is where and for how long.
