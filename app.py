@@ -230,6 +230,3 @@ if __name__ == "__main__":
 
     print("\n--- FINAL AI TRACKER RESULTS ---")
     print(json.dumps(ai_result, indent=4))
-
-    print("\n--- FINAL AI TRACKER RESULTS ---")
-    print(json.dumps(ai_result, indent=4))
