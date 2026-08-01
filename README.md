@@ -2,8 +2,7 @@
 AI agent designed to track which city a tattoo artist is. It scrapes Instagram profiles, extracts messy location data from bios, captions, and hidden links, and outputs a clean, standardized JSON object of where artists are currently tattooing and where they are guesting.
 
 ## The Problem
-As someone that collects my favorite artist in my following waiting for the day I travel to thier city only to arrive there and hopelessly search on the deepsea that is instagram and the hundreds of people I follow hoping I remember just exactly who it was that I was looking for, I desperately need this tool. I will not sit on another flight home to then realize I had just unknowingly visited the city of a tattooer I had admired for years. 
-
+I travel to places and then only afterward remember/ see on instagram that my favorite tattoo artist lives there and I missed an opportunity and now what I must return before I die and thus inefficient traveling ugh
 
 
 The modern tattoo industry has evolved into a highly nomadic culture, where traveling for guest spots and pop-ups is the standard. However, the tools to track these artists haven't caught up. Artists scatter their changing locations across Instagram in a chaotic mix of formats, whether buried in an outdated text bio, hidden as a raw Google Maps link, casually dropped in a post caption, or the even bio of a different user linked somewhere. Because their schedules are a constantly moving target, manually piecing together where artists are tattooing on any given week is a near-impossible nightmare. This tool is built specifically to adapt to this new industry reality, automatically hunting down and standardizing that fragmented data.
