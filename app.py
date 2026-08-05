@@ -27,7 +27,7 @@ def expand_urls_in_text(text):
             pass # If it fails, just leave the original link
     return text
 
-# 3. THE "DEEP DIVE" EYES - Checking studio bios
+# # 3. THE "DEEP DIVE" EYES - Checking studio bios
 def scrape_studio_bio(studio_username):
     print(f"🔍 Deep Dive: Checking @{studio_username}'s bio for a location...")
     run_input = {"usernames": [studio_username], "resultsLimit": 1}
@@ -45,62 +45,61 @@ def scrape_studio_bio(studio_username):
 
 # 4. THE MAIN EYES - Getting real data
 def get_real_instagram_data(artist_usernames):
-    print(f"🔍 Apify is scraping real data for: {artist_usernames}...")
-    print("(This might take 30-60 seconds per artist, please be patient!)\n")
-    
+    ACTOR_ID = "apify/instagram-profile-scraper"
+
+    # Prepare the Actor input
     run_input = {
-        "usernames": artist_usernames,
+        "usernames": artist_usernames, # <--- REPLACE TARGET USERNAME
         "resultsLimit": 10,
     }
 
-    run = apify_client.actor("apify/instagram-profile-scraper").call(run_input=run_input)
-    real_data = []
-    
-    for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
-        handle = item.get('username')
-        
-        if not any(d['handle'] == f"@{handle}" for d in real_data):
-            raw_bio = item.get('biography', 'Unknown')
-            # EXPAND URLs IN THE MAIN BIO
-            expanded_bio = expand_urls_in_text(raw_bio)
-            
-            real_data.append({
-                "handle": f"@{handle}",
-                "bio": expanded_bio,
-                "recent_captions": []
-            })
-        
-        for artist in real_data:
-            if artist['handle'] == f"@{handle}":
-                caption = item.get('caption')
-                if caption and len(artist['recent_captions']) < 10:
-                    artist['recent_captions'].append(caption)
+    print("Starting scraper... this might take a minute.")
+    # Run the Actor
+    run = apify_client.actor(ACTOR_ID).call(run_input=run_input)
 
-    return real_data
+    # Fetch the results
+    dataset = apify_client.dataset(run["defaultDatasetId"])
+
+    # Grab ALL the raw data and put it into a Python list
+    all_raw_data = list(dataset.iterate_items())
+
+    # # Create a file and dump the raw JSON data into it
+    # filename = "raw_instagram_data.json"
+    # with open(filename, "w", encoding="utf-8") as file:
+    #     # indent=4 makes it readable, ensure_ascii=False keeps emojis intact
+    #     json.dump(all_raw_data, file, indent=4, ensure_ascii=False)
+
+    # print(f"\nDone! Saved {len(all_raw_data)} items to '{filename}'")
+
+    return all_raw_data
 
 # 5. THE UPGRADED AI BRAIN (With Hierarchy Instructions)
 SYSTEM_PROMPT = """
 You are an intelligence-gathering assistant for a tattoo artist. Your job is to analyze Instagram bios and recent post captions to determine current physical location and upcoming travel.
 
 CRITICAL HIERARCHY FOR FINDING LOCATIONS:
-1. Look for direct City/Country names.
-2. Look for Google Maps links (they will be expanded full URLs like google.com/maps/place/Austin,+TX) or physical street addresses. Extract the City and State/Country from these links/addresses.
+1. Look for direct City/Country names in bio and captions. 
+2. Look for Google Maps links or physical street addresses. Extract the City and Country.
 3. If neither is found, look for @mentions of studios.
 
 Task: Read the provided data and extract the following. You MUST be able to handle MULTIPLE guest spots.
 
 Output a JSON object with an "artists" array containing:
 1. artist_handle
-2. home_base (Where they live/work permanently)
-3. current_location (Where they are right now)
-4. guest_spots (An ARRAY/LIST of objects. Format: [{"location": "City", "dates": "Aug 10-13"}]. If none, empty array [])
-5. booking_status (e.g., "Open", "Waitlist", "Unknown")
-6. contact_info
-7. tracking_status ("TRACKED" if you found a location, "UNTRACKED" if completely unknown)
-8. needs_deep_dive (Set to "TRUE" if tracking_status is UNTRACKED, but you see an "@username" in the bio. Otherwise "FALSE").
+2. locations (An ARRAY/LIST of objects. Format: [{"location": "City", "dates": "Aug 10-13"}]. If they just say "City Month", put the month in the dates field. If none, empty array [].)
+3. home_base (If you can find a home base city, put it here. Infer to your best ability which is the resident city. Otherwise "Unknown")
+4. tracking_status ("TRACKED" if you found a location, "UNTRACKED" if completely unknown)
+5. needs_deep_dive (Set to "TRUE" if tracking_status is UNTRACKED, but you see an "@username" in the bio. Otherwise "FALSE").
+
+EXAMPLE OF HOW TO PARSE MESSY TEXT:
+If a caption says: "BOOK ME LONDON AUGUST! Or COPENHAGEN SEPTEMPER👩‍❤️‍💋‍👨🇬🇧🇩🇰"
+You must extract BOTH, correct the typo, and output:
+"locations": [{"location": "London", "dates": "August"}, {"location": "Copenhagen", "dates": "September"}]
 
 Rules:
-- Extract ALL guest spots mentioned in the bio or captions.
+- If an artist lists multiple cities with months but doesn't specify a home base, put ALL of them into the "locations" array.
+- Extract ALL locations mentioned, EVEN if casually phrased like "Book me in CITY for MONTH".
+- CRITICAL: Correct obvious typos in city and month names (e.g., "SEPTEMPER" = September).
 - Output ONLY valid JSON.
 """
 
@@ -125,11 +124,8 @@ def standardize_locations(data):
     # 1. Gather all unique messy locations from the data
     unique_locations = set()
     for artist in data['artists']:
-        if artist.get('current_location') and artist['current_location'] != 'Unknown':
-            unique_locations.add(artist['current_location'])
-        if artist.get('home_base') and artist['home_base'] != 'Unknown':
-            unique_locations.add(artist['home_base'])
-        for spot in artist.get('guest_spots', []):
+        # Notice we changed this to 'locations' to match your new prompt!
+        for spot in artist.get('locations', []):
             if spot.get('location') and spot['location'] != 'Unknown':
                 unique_locations.add(spot['location'])
     
@@ -141,6 +137,7 @@ def standardize_locations(data):
     You are a geography expert. Standardize this list of messy location names into a uniform "City, Country" format.
     Handle aliases (e.g., Saigon, HCMC, Ho Chi Minh all become "Ho Chi Minh City, Vietnam").
     If a US state is given (e.g., "Baltimore, MD"), format as "Baltimore, USA".
+    If just a city is given (e.g., "Copenhagen"), add the country (e.g., "Copenhagen, Denmark").
     Return ONLY a JSON object mapping the old messy name to the new standard name.
     Locations to clean: {list(unique_locations)}
     """
@@ -155,15 +152,58 @@ def standardize_locations(data):
     
     # 3. Apply the mapping back to our original data
     for artist in data['artists']:
-        if artist.get('current_location') in mapping:
-            artist['current_location'] = mapping[artist['current_location']]
-        if artist.get('home_base') in mapping:
-            artist['home_base'] = mapping[artist['home_base']]
-        for spot in artist.get('guest_spots', []):
+        for spot in artist.get('locations', []):
             if spot.get('location') in mapping:
                 spot['location'] = mapping[spot['location']]
                 
     return data
+
+#filter out captions from json 
+def extract_sidecar_captions(json_file_path):
+    """
+    Extract captions from Sidecar type posts in Instagram JSON data
+    
+    Args:
+        json_file_path (str): Path to the JSON file
+    
+    Returns:
+        list: List of captions from Sidecar posts
+    """
+    try:
+        # Read the JSON file
+        with open(json_file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        
+        sidecar_captions = []
+        
+        # Iterate through the data
+        for user in data:
+            if 'latestPosts' in user:
+                for post in user['latestPosts']:
+                    # Check if the post type is "Sidecar"
+                    if post.get('type') == 'Sidecar':
+                        caption = post.get('caption', '')
+                        if caption:  # Only add non-empty captions
+                            sidecar_captions.append({
+                                'post_id': post.get('id'),
+                                'short_code': post.get('shortCode'),
+                                'url': post.get('url'),
+                                'caption': caption,
+                                'likes': post.get('likesCount'),
+                                'comments': post.get('commentsCount'),
+                                'timestamp': post.get('timestamp')
+                            })
+        
+        return sidecar_captions
+    except FileNotFoundError:
+        print(f"Error: File '{json_file_path}' not found.")
+        return []
+    except json.JSONDecodeError:
+        print(f"Error: Invalid JSON format in '{json_file_path}'.")
+        return []
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
 
 # 6. RUN THE APP
 if __name__ == "__main__":
