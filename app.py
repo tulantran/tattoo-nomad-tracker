@@ -86,20 +86,13 @@ Task: Read the provided data and extract the following. You MUST be able to hand
 
 Output a JSON object with an "artists" array containing:
 1. artist_handle
-2. locations (An ARRAY/LIST of objects. Format: [{"location": "City", "dates": "Aug 10-13"}]. If they just say "City Month", put the month in the dates field. If none, empty array [].)
+2. locations (An ARRAY/LIST of objects. Format: [{"location": "City", "dates": "Aug 10-13"}]. Only record locations in future dates, no past dates. If they just say "City Month", put the month in the dates field. If none, empty array [].)
 3. home_base (If you can find a home base city, put it here. Infer to your best ability which is the resident city. Otherwise "Unknown")
 4. tracking_status ("TRACKED" if you found a location, "UNTRACKED" if completely unknown)
 5. needs_deep_dive (Set to "TRUE" if tracking_status is UNTRACKED, but you see an "@username" in the bio. Otherwise "FALSE").
 
-EXAMPLE OF HOW TO PARSE MESSY TEXT:
-If a caption says: "BOOK ME LONDON AUGUST! Or COPENHAGEN SEPTEMPER👩‍❤️‍💋‍👨🇬🇧🇩🇰"
-You must extract BOTH, correct the typo, and output:
-"locations": [{"location": "London", "dates": "August"}, {"location": "Copenhagen", "dates": "September"}]
 
 Rules:
-- If an artist lists multiple cities with months but doesn't specify a home base, put ALL of them into the "locations" array.
-- Extract ALL locations mentioned, EVEN if casually phrased like "Book me in CITY for MONTH".
-- CRITICAL: Correct obvious typos in city and month names (e.g., "SEPTEMPER" = September).
 - Output ONLY valid JSON.
 """
 
@@ -158,52 +151,62 @@ def standardize_locations(data):
                 
     return data
 
-#filter out captions from json 
-def extract_sidecar_captions(json_file_path):
-    """
-    Extract captions from Sidecar type posts in Instagram JSON data
+import json
+
+def extract_artist_info(data):
+    """Extract bio, URLs, and captions (with locations) from multiple artist Instagram profiles."""
     
-    Args:
-        json_file_path (str): Path to the JSON file
+    # Handle both single artists and lists of artists
+    artists = data if isinstance(data, list) else [data]
+    extracted = []
     
-    Returns:
-        list: List of captions from Sidecar posts
-    """
-    try:
-        # Read the JSON file
-        with open(json_file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
+    for artist in artists:
+        artist_data = {
+            "username": artist.get("username", ""),
+            "display_name": artist.get("fullName", ""),
+            "bio": artist.get("biography", ""),
+            "urls": [
+                {"title": u.get("title", ""), "url": u.get("url", "")}
+                for u in artist.get("externalUrls", [])
+            ],
+            "posts": []
+        }
         
-        sidecar_captions = []
+        # Add primary URL if not already included
+        primary = artist.get("externalUrl", "")
+        if primary and not any(u["url"] == primary for u in artist_data["urls"]):
+            artist_data["urls"].append({"title": "Primary Link", "url": primary})
         
-        # Iterate through the data
-        for user in data:
-            if 'latestPosts' in user:
-                for post in user['latestPosts']:
-                    # Check if the post type is "Sidecar"
-                    if post.get('type') == 'Sidecar':
-                        caption = post.get('caption', '')
-                        if caption:  # Only add non-empty captions
-                            sidecar_captions.append({
-                                'post_id': post.get('id'),
-                                'short_code': post.get('shortCode'),
-                                'url': post.get('url'),
-                                'caption': caption,
-                                'likes': post.get('likesCount'),
-                                'comments': post.get('commentsCount'),
-                                'timestamp': post.get('timestamp')
-                            })
+        # Process posts
+        for post in artist.get("latestPosts", []):
+            post_data = {
+                #"short_code": post.get("shortCode", ""),
+                "caption": post.get("caption", ""),
+                "timestamp": post.get("timestamp", ""),
+                #"likes": post.get("likesCount", 0),
+                #"comments": post.get("commentsCount", 0),
+                # Location fields - ADDED
+                "location": post.get("locationName", ""),
+                #"location_id": post.get("locationId", "")
+            }
+            
+            # Extract child captions from Sidecar posts
+            if post.get("type") == "Sidecar":
+                child_captions = [
+                    c.get("caption", "")
+                    for c in post.get("childPosts", [])
+                    if c.get("caption", "")
+                ]
+                if child_captions:
+                    post_data["child_captions"] = child_captions
+            
+            # Only keep posts with content
+            if post_data["caption"] or post_data.get("child_captions"):
+                artist_data["posts"].append(post_data)
         
-        return sidecar_captions
-    except FileNotFoundError:
-        print(f"Error: File '{json_file_path}' not found.")
-        return []
-    except json.JSONDecodeError:
-        print(f"Error: Invalid JSON format in '{json_file_path}'.")
-        return []
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return []
+        extracted.append(artist_data)
+    
+    return extracted
 
 # 6. RUN THE APP
 if __name__ == "__main__":
@@ -217,9 +220,11 @@ if __name__ == "__main__":
     
     # Step A: Get the real data (URLs are automatically expanded here)
     raw_data = get_real_instagram_data(artists_to_track)
-    
+
+    filtered_data = extract_artist_info(raw_data)
+
     # Step B: First AI Pass
-    ai_result = analyze_artists(raw_data)
+    ai_result = analyze_artists(filtered_data)
     
     # Step C: Handle the "Deep Dive" for untracked artists
     for artist in ai_result['artists']:
@@ -270,3 +275,4 @@ if __name__ == "__main__":
 
     print("\n--- FINAL AI TRACKER RESULTS ---")
     print(json.dumps(ai_result, indent=4))
+    

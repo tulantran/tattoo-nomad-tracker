@@ -2,7 +2,7 @@ import streamlit as st
 import json
 
 # This line magically imports the heavy lifting functions from your app.py file!
-from app import get_real_instagram_data, analyze_artists, standardize_locations
+from app import extract_artist_info, get_real_instagram_data, analyze_artists, standardize_locations
 
 # --- 1. PAGE SETUP ---
 st.set_page_config(page_title="Tattoo Nomad Tracker", page_icon="🌍", layout="wide")
@@ -33,14 +33,17 @@ if track_button:
                 # Step 1: Get the data from Apify
                 raw_data = get_real_instagram_data(usernames)
 
+                # Step 2: Extract artist info
+                filtered_data = extract_artist_info(raw_data)
+
                   # --- DEBUG MODE: SHOW RAW DATA ---
-                # st.subheader("🐛 Debug Mode: What the AI sees")
-                # st.write("Here is the exact text pulled from Instagram before the AI touches it:")
-                # st.json(raw_data)
+                st.subheader("🐛 Debug Mode: What the AI sees")
+                st.write("Here is the exact text pulled from Instagram before the AI touches it:")
+                st.json(filtered_data)
                 # -----------------------------------
                 
                 # Step 2: Run the AI extraction
-                ai_result = analyze_artists(raw_data)
+                ai_result = analyze_artists(filtered_data)
                 
                 # Step 3: Clean the geography data
                 final_data = standardize_locations(ai_result)
