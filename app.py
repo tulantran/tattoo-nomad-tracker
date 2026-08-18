@@ -1,6 +1,7 @@
 import os
 import json
 import re
+from datetime import datetime
 import requests
 from openai import OpenAI
 from apify_client import ApifyClient
@@ -74,7 +75,8 @@ def get_real_instagram_data(artist_usernames):
     return all_raw_data
 
 # 5. THE UPGRADED AI BRAIN (With Hierarchy Instructions)
-SYSTEM_PROMPT = """
+TODAY_STR = datetime.now().strftime("%B %d, %Y")
+SYSTEM_PROMPT = SYSTEM_PROMPT = """
 You are an intelligence-gathering assistant for a tattoo artist. Your job is to analyze Instagram bios and recent post captions to determine current physical location and upcoming travel.
 
 CRITICAL HIERARCHY FOR FINDING LOCATIONS:
@@ -86,17 +88,18 @@ Task: Read the provided data and extract the following. You MUST be able to hand
 
 Output a JSON object with an "artists" array containing:
 1. artist_handle
-2. locations (An ARRAY/LIST of objects. Format: [{"location": "City", "dates": "Aug 10-13"}]. Only record locations in future dates, no past dates. If they just say "City Month", put the month in the dates field. If none, empty array [].)
+2. locations (An ARRAY/LIST of objects. Format: [{{"location": "City", "dates": "Aug 1-31, 2026"}}]. If no year is given in a listed date, assume it's referring to the closest time to the date it is posted. Only include dates after {TODAY_STR} If none, empty array [].)
 3. home_base (If you can find a home base city, put it here. Infer to your best ability which is the resident city. Otherwise "Unknown")
 4. tracking_status ("TRACKED" if you found a location, "UNTRACKED" if completely unknown)
 5. needs_deep_dive (Set to "TRUE" if tracking_status is UNTRACKED, but you see an "@username" in the bio. Otherwise "FALSE").
 
-
 Rules:
+- Discard any locations that are before {TODAY_STR}. Only include future or ongoing guest spots.
 - Output ONLY valid JSON.
-"""
+""".format(TODAY_STR=TODAY_STR)
 
 def analyze_artists(artists_data):
+    
     print("🧠 Sending real data to the AI Agent...")
     
     response = openai_client.chat.completions.create(
@@ -186,7 +189,7 @@ def extract_artist_info(data):
                 #"likes": post.get("likesCount", 0),
                 #"comments": post.get("commentsCount", 0),
                 # Location fields - ADDED
-                "location": post.get("locationName", ""),
+                #"location": post.get("locationName", ""),
                 #"location_id": post.get("locationId", "")
             }
             
@@ -207,6 +210,152 @@ def extract_artist_info(data):
         extracted.append(artist_data)
     
     return extracted
+
+import calendar
+from datetime import datetime, date
+
+# --- POST-PROCESSING: DATE FILTER ---
+def get_closest_future_year(month_num, day_num):
+    """
+    Returns the year for the closest future date given a month and day.
+    
+    Args:
+        month_num (int): Month number (1-12)
+        day_num (int): Day of the month (1-31)
+    
+    Returns:
+        int: The year that makes this date the closest future date
+    
+    Example:
+        If today is Dec 1, 2026 and given (1, 1), returns 2027
+        If today is Jan 15, 2026 and given (1, 1), returns 2026
+    """
+    # Get current date
+    today = datetime.now()
+    current_year = today.year
+    
+    # Create the target date for this year
+    try:
+        target_date_this_year = datetime(current_year, month_num, day_num)
+    except ValueError:
+        raise ValueError(f"Invalid date: month {month_num}, day {day_num}")
+    
+    # Create the target date for next year
+    target_date_next_year = datetime(current_year + 1, month_num, day_num)
+    
+    # If the date this year hasn't passed yet (or is today), use this year
+    this_year_diff = abs((target_date_this_year - today).days)
+    next_year_diff = abs((target_date_next_year - today).days)
+
+    if this_year_diff <= next_year_diff:
+        return current_year
+    else:
+        return current_year + 1 
+
+def infer_and_format_date(dates_str):
+    """Turns messy strings like 'Aug 10-13' or 'July 12th' into a real Python date object"""
+    """Returns a tuple: (end_date_object, formatted_string)"""
+    if not dates_str or dates_str == "Unknown":
+        return None, dates_str
+        
+    month_num = None
+    start_day = None
+    end_day = None
+    year = None
+    
+    # 1. Match a range like "Aug 10-13"
+    range_match = re.search(r'([A-Za-z]+)\s+(\d{1,2})\s*[-–]\s*(\d{1,2})(?:,\s*(\d{4}))?', dates_str)
+    if range_match:
+        month_str, start_day_str, end_day_str = range_match.group(1, 2, 3)
+        start_day, end_day = int(start_day_str), int(end_day_str)
+        year_str = range_match.group(4)
+        try:
+            month_num = datetime.strptime(month_str, "%b").month if len(month_str) <= 3 else datetime.strptime(month_str, "%B").month
+        except ValueError as e:
+            print(f"Error: Invalid month name '{month_str}'.") 
+            print(f"Details: {e}")
+            return None, dates_str
+        if year_str:
+                year = int(year_str)
+        else:
+            year = get_closest_future_year(month_num, start_day)
+        
+            
+    # 2. Match a specific day like "Aug 15"
+    if month_num is None:
+        day_match = re.search(r'([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?', dates_str)
+        if day_match:
+            month_str, day_str = day_match.group(1, 2)
+            start_day = end_day = int(day_str)
+            year_str = day_match.group(3)
+            try:
+                month_num = datetime.strptime(month_str, "%b").month if len(month_str) <= 3 else datetime.strptime(month_str, "%B").month
+            except ValueError as e:
+                print(f"Error: Invalid month name '{month_str}'.")
+                print(f"Details: {e}")
+                return None, dates_str
+            if year_str:
+                year = int(year_str)
+            else:
+                year = get_closest_future_year(month_num, start_day)
+            
+            
+                
+    # 3. Match just a month like "September"
+    if month_num is None:
+        month_match = re.search(r'^([A-Za-z]+)(?:,\s*(\d{4}))?$', dates_str.strip())
+        if month_match:
+            month_str = month_match.group(1)
+            year_str = month_match.group(2)
+            try:
+                month_num = datetime.strptime(month_str, "%b").month if len(month_str) <= 3 else datetime.strptime(month_str, "%B").month
+                start_day = 1
+            except ValueError as e:
+                print(f"Error: Invalid month name '{month_str}'.") 
+                print(f"Details: {e}")
+                return None, dates_str
+            if year_str:
+                year = int(year_str)
+            else:
+                year = get_closest_future_year(month_num, start_day)
+
+            end_day = calendar.monthrange(year, month_num)[1] 
+
+    start_date= datetime(year, month_num, start_day)
+    end_date = datetime(year, month_num, end_day)
+
+    return start_date, end_date
+
+def is_in_past(dt):
+    return dt < datetime.now()
+    
+
+def filter_and_standardize_locations(data):
+    """Main function to standardize date formats and delete past dates"""
+    
+    for artist in data.get('artists', []):
+        valid_locations = []
+        
+        for spot in artist.get('locations', []):
+            dates_str = spot.get('dates')
+            
+            # Step 1: Infer missing info and format it
+            start_date, end_date = infer_and_format_date(dates_str)
+            
+            # Always update the spot's date string to the new standardized format
+            spot['dates'] = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+            
+            # Step 2: Delete if it's in the past
+            # (If end_date is None, infer_and_format_date determined the closest date was in the past)
+            if end_date is None or is_in_past(end_date):
+                continue # Skip adding it to the valid list
+                
+            valid_locations.append(spot)
+            
+        # Replace the old locations list with the cleaned one
+        artist['locations'] = valid_locations
+        
+    return data
 
 # 6. RUN THE APP
 if __name__ == "__main__":
